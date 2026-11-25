@@ -33,17 +33,20 @@ const ZERO = 128 / 255
 
 const hash = (q: vec2) => fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453)
 
-// A point on screen (points, y up) to the painting's units (y down), covering
-// the window pinned to its right edge and centred vertically.
-// Then it slides right, so the cube sits near 78% of the window's width, clear
-// of the conversation column: the far-right gears crop off, the claws' joints
-// always stay in view, and the gap it opens at the left is filled by mirroring
-// the painting's dark left edge.
+// The painting's scale on screen: it covers the window.
+const paintScale = () => max(max(size.x / VB.x, size.y / VB.y), 0.0001)
+
+// A point on screen (points, y up) to the painting's units (y down). This is
+// the layout of the Svg under the shader (register.tsx, SCENE): the painting
+// covers the window, centred vertically, pinned to the right edge and slid a
+// further SLIDE units right, so the cube sits clear of the conversation column
+// (78% of the width on a wide window). The gap at the left shows the
+// painting's dark left edge mirrored. Keep SLIDE equal to register.tsx's, so
+// the first frame, before the shader plays, lines up with the animation.
+const SLIDE = 50
 const toPainting = (pt: vec2) => {
-  const s = max(max(size.x / VB.x, size.y / VB.y), 0.0001)
-  const pinned = size.x - VB.x * s
-  const slide = clamp(size.x * 0.78 - (pinned + CUBE.x * s), 0, 95 * s)
-  const o = vec2(pinned + slide, (size.y - VB.y * s) * 0.5)
+  const s = paintScale()
+  const o = vec2(size.x - (VB.x - SLIDE) * s, (size.y - VB.y * s) * 0.5)
   const down = vec2(pt.x, size.y - pt.y)
   return vec2((down - o) / s)
 }
@@ -292,11 +295,11 @@ const view = picture(p => {
   // the arms' motion and the cube's shading; the cube's glow and its box
   const posed = motion.sample(vec2((at - ARM_O) / ARM_S))
   const glow = vec4(energy.sample(vec2((at - EN_O) / EN_S)) * wake)
-  // where this pixel's painting comes from, with the arms' motion applied.
-  // The painting fills the texture whole, y up; left of its edge (after the
-  // slide), mirror it back in
-  const q = vec2(at + (posed.xy - ZERO) * 32 * wake)
-  const base = vec3(scene.sample(vec2(abs(q.x) / VB.x, 1 - q.y / VB.y)).rgb)
+  // where this pixel's painting comes from: the scene is the Svg as drawn on
+  // screen, so read it here, moved by the arms' motion (painting units, y
+  // down, turned into screen uv, y up)
+  const shift = vec2((posed.xy - ZERO) * 32 * wake * paintScale())
+  const base = vec3(scene.sample(vec2((p.point + vec2(shift.x, -shift.y)) / size)).rgb)
   // the cube's own faces, relit: its green breathes toward a neon cyan,
   // shaded and highlighted as the light circles it. Only the cube's green
   // paint changes (greener than the glow round it, and not gold); its

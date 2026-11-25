@@ -10,8 +10,7 @@ import { BODY, VB_H, VB_W } from './scene.js'
 // to the right edge and slid 50 units right, where the shader puts it in a
 // window at least as wide as 16:9, with the painting mirrored into the gap
 // that opens at the left.
-const SLIDE = 50
-const SCENE_FIT = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VB_W} ${VB_H}" preserveAspectRatio="none">${BODY}</svg>`
+const SLIDE = 50 // keep equal to wakfu.ts SLIDE: the shader draws over this same layout
 const SCENE_STILL = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-SLIDE} 0 ${VB_W} ${VB_H}" preserveAspectRatio="xMaxYMid slice"><g id="p">${BODY}</g><use href="#p" transform="scale(-1 1)"/></svg>`
 const SCENE_ALT = 'Mecha claws probing a glowing cube under a broken clock dial, wakfu energy swirling around it'
 
@@ -445,7 +444,7 @@ export const register: Register = on => {
     // and casts its wakfu.
     return (
       <Shader module="./wakfu.ts">
-        <Svg source={SCENE_FIT} alt={SCENE_ALT} />
+        <Svg source={SCENE_STILL} alt={SCENE_ALT} />
       </Shader>
     )
   })
