@@ -1,9 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
-// The engine checks a theme's sound before it reaches the app (each cue must
-// render within 32 seconds, among other limits) and refuses it whole; the
-// mod then falls back to a look without sound, and logs why. Catch that.
-test('the look is accepted with its sound', async ($, on) => {
+// Every sound is a recording played by sounds.ts: the look carries no
+// synthesized theme sound, so none of the old clockwork cues plays over them.
+test('the look is accepted and carries no synthesized sound', async ($, on) => {
   const logs: string[] = []
   const looks: unknown[] = []
   on('theme.set', (_, e) => {
@@ -21,4 +20,5 @@ test('the look is accepted with its sound', async ($, on) => {
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   expect(logs.filter(l => /refused/.test(l))).toEqual([])
   expect(looks.length).toBe(1)
+  expect(JSON.stringify(looks[0]).includes('"sound"')).toBe(false)
 })

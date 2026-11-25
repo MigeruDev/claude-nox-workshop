@@ -1,7 +1,8 @@
-import type { EngineInterface, Register, ThemeSetArgs, ThemeSound, ThemeStyle, Timer } from 'claude-code'
+import type { EngineInterface, Register, ThemeSetArgs, ThemeStyle, Timer } from 'claude-code'
 
 import { makeColors } from './make-colors.js'
 import { BODY, VB_H, VB_W } from './scene.js'
+import { isSoundOn, playEffect, setSound, startSounds, stopSounds } from './sounds.ts'
 
 // The traced painting, wrapped two ways.
 // FIT fills the box whole, stretched: the shader crops it itself, so it never
@@ -178,105 +179,9 @@ const STYLE: ThemeStyle = {
   },
 }
 
-// "The deadline": an original soundscape of an old clock in the workshop,
-// heavy and tense. Its escapement ticks in runs of sharp metal clicks, half
-// a second apart, a new run picking up as the last ends, like an old clock
-// that catches now and then; under it a soft wooden knock and a low
-// heartbeat keep a steady pulse, once a second; and once in a while the
-// clock is being built around you: a ratchet wound, a gear dropped into
-// place, a plate of metal ringing, a wheel grinding.
-const SOUND: ThemeSound = {
-  ambience: {
-    reverb: 0.4,
-    layers: [
-      // tick-tock: runs of eight sharp clicks, half a second apart, about one
-      // run after another (a run may last 4 s in all, so each is 3.5 s)
-      { wave: 'square', scatter: 0.26, notes: ['E6', 'A5', 'E6', 'A5', 'E6', 'A5', 'E6', 'A5'], step: 0.5, attack: 0.002, release: 0.025, gain: 0.04, filter: { type: 'highpass', hz: 1200 } },
-      // a soft wooden knock, steady once a second, so the beat never stops
-      { wave: 'pink', drone: true, gain: 0.018, filter: { type: 'bandpass', hz: 700 }, tremolo: { hz: 1, depth: 1 } },
-      // the heartbeat: a low throb in time with the tock
-      { wave: 'sine', drone: true, notes: ['A1'], gain: 0.04, tremolo: { hz: 1, depth: 1 } },
-      // assembly: a ratchet wound a few clicks at a time
-      { wave: 'square', scatter: 0.04, notes: ['C6', 'D6', 'C6', 'E6', 'C6', 'D6'], step: 0.07, attack: 0.002, release: 0.02, gain: 0.03, filter: { type: 'highpass', hz: 1500 } },
-      // a gear dropped into place
-      { wave: 'triangle', scatter: 0.025, notes: ['G2', 'D2'], attack: 0.002, release: 0.3, gain: 0.05, glide: -4 },
-      // a plate of metal ringing
-      { wave: 'bell', scatter: 0.02, notes: ['D4', 'A3'], release: 2, gain: 0.04, pan: 0.3 },
-      // a wheel grinding against another
-      { wave: 'crackle', scatter: 0.02, attack: 0.02, release: 0.4, gain: 0.03, filter: { type: 'bandpass', hz: 900 }, pan: -0.3 },
-    ],
-  },
-  // Every cue is heavy clockwork, mechanical and dramatic: ticks are short
-  // square tones lowered toward brass, each with a deep body under it; gears
-  // land with low thuds; the great clock strikes on a bell over a low boom;
-  // springs and grinding are bursts of filtered noise. A rest (0) holds a
-  // layer back, so a strike can land after the ticks that lead to it.
-  cues: {
-    // you send: the mainspring is wound, ratchet clicks, then the latch drops home
-    send: {
-      reverb: 0.35,
-      layers: [
-        { wave: 'square', notes: ['C6', 'C6', 'D6', 'C6', 'D6', 'E6'], step: 0.06, attack: 0.002, release: 0.02, gain: 0.07, filter: { type: 'highpass', hz: 1500 } },
-        { wave: 'white', attack: 0.04, release: 0.35, gain: 0.04, filter: { type: 'bandpass', hz: 700, to: 3800 } },
-        { wave: 'triangle', notes: [0, 0, 0, 0, 0, 0, 'G2'], step: 0.06, attack: 0.002, release: 0.3, gain: 0.16, glide: -5 },
-        { wave: 'pink', attack: 0.002, release: 0.1, gain: 0.08, filter: { type: 'bandpass', hz: 650 } },
-      ],
-    },
-    // a tool runs: a tick with a little weight under it
-    tool: {
-      layers: [
-        { wave: 'white', attack: 0.002, release: 0.025, gain: 0.07, filter: { type: 'highpass', hz: 4000 } },
-        { wave: 'triangle', notes: ['A3'], attack: 0.002, release: 0.05, gain: 0.05 },
-      ],
-    },
-    // Claude is done: a heavy tick-tock, then the great clock strikes
-    // (a cue may take 32 s of audio to render in all, rests and echo included)
-    done: {
-      reverb: 0.4,
-      layers: [
-        { wave: 'square', notes: ['E6', 'A5', 'E6', 'A5'], step: 0.25, attack: 0.002, release: 0.03, gain: 0.07, filter: { type: 'highpass', hz: 1200 } },
-        { wave: 'triangle', notes: ['E3', 'A2', 'E3', 'A2'], step: 0.25, attack: 0.002, release: 0.08, gain: 0.08 },
-        { wave: 'bell', notes: [0, 0, 0, 0, 'D4'], step: 0.25, release: 2, gain: 0.18 },
-        { wave: 'sine', notes: [0, 0, 0, 0, 'D2'], step: 0.25, attack: 0.004, release: 1.6, gain: 0.12 },
-      ],
-    },
-    // the conversation is compacted: the hands spin back, then slam to a stop
-    compact: {
-      reverb: 0.45,
-      layers: [
-        { wave: 'square', notes: ['C7', 'A6', 'F6', 'D6', 'B5', 'G5', 'E5', 'C5'], step: 0.035, attack: 0.002, release: 0.018, gain: 0.06, filter: { type: 'highpass', hz: 1500 } },
-        { wave: 'triangle', notes: [0, 0, 0, 0, 0, 0, 0, 0, 'C2'], step: 0.035, attack: 0.002, release: 0.4, gain: 0.18, glide: -4 },
-        { wave: 'bell', notes: [0, 0, 0, 0, 0, 0, 0, 0, 'C5'], step: 0.035, release: 1.4, gain: 0.08 },
-      ],
-    },
-    // a question for you: two heavy ticks, then a bell asks
-    ask: {
-      reverb: 0.45,
-      layers: [
-        { wave: 'square', notes: ['B5', 0, 'B5'], step: 0.15, attack: 0.002, release: 0.03, gain: 0.07, filter: { type: 'highpass', hz: 1200 } },
-        { wave: 'triangle', notes: ['E3', 0, 'E3'], step: 0.15, attack: 0.002, release: 0.1, gain: 0.08 },
-        { wave: 'bell', notes: [0, 0, 0, 'A4', 'E5'], step: 0.15, release: 1.6, gain: 0.12 },
-      ],
-    },
-    // something went wrong: gears grind and drop with a dull thud
-    error: {
-      reverb: 0.3,
-      layers: [
-        { wave: 'crackle', attack: 0.01, release: 0.5, gain: 0.12, filter: { type: 'bandpass', hz: 900 } },
-        { wave: 'triangle', notes: ['D3', 'C#3'], step: 0.15, attack: 0.002, release: 0.5, gain: 0.14, glide: -6 },
-        { wave: 'brown', attack: 0.002, release: 0.4, gain: 0.15, filter: { type: 'lowpass', hz: 220 } },
-      ],
-    },
-    // a click on the bare background: one weighty tick, higher toward the right
-    click: {
-      reverb: 0.3,
-      layers: [
-        { wave: 'square', notes: ['G5', 'A5', 'B5', 'C6', 'D6', 'E6'], attack: 0.002, release: 0.025, gain: 0.07, filter: { type: 'highpass', hz: 1500 } },
-        { wave: 'triangle', notes: ['A2', 'B2', 'C3', 'D3', 'E3', 'G3'], attack: 0.002, release: 0.1, gain: 0.07 },
-      ],
-    },
-  },
-}
+// No synthesized theme sound: every sound is one of the recordings sounds.ts
+// plays (the background track, and the clockwork clip for done, approvals,
+// questions and background clicks).
 
 const BASE: ThemeSetArgs = {
   colors: theme,
@@ -298,17 +203,10 @@ let lookPending = false
 const applyLook = async ($: EngineInterface) => {
   let set
   try {
-    set = await $.theme.set({ ...BASE, style: STYLE, sound: SOUND })
+    set = await $.theme.set({ ...BASE, style: STYLE })
   } catch (error) {
-    // most likely the sound (too costly, or a build without theme sound):
-    // keep everything else
-    $.ui.log(`nox-workshop: look with sound refused, trying without it: ${String(error)}`)
-    try {
-      set = await $.theme.set({ ...BASE, style: STYLE })
-    } catch (again) {
-      $.ui.log(`nox-workshop: styles refused too, falling back to colors and background: ${String(again)}`)
-      set = await $.theme.set(BASE)
-    }
+    $.ui.log(`nox-workshop: styles refused, falling back to colors and background: ${String(error)}`)
+    set = await $.theme.set(BASE)
   }
   // with no app attached yet the theme waits for one; say so quietly
   lookPending = !set.isDrawn
@@ -343,10 +241,25 @@ export const register: Register = on => {
     restLater($)
     await $.command.register({
       name: 'workshop',
-      description: 'Krozmos Workshop background: live, calm (still, saves battery) or auto',
-      argumentHint: '[live|calm|auto]',
+      description: 'Krozmos Workshop background: live, calm (still, saves battery) or auto; sound on or off',
+      argumentHint: '[live|calm|auto|sound on|sound off]',
       immediate: true,
     })
+    // the recorded background track and effects
+    await startSounds($)
+
+    return next(e)
+  })
+
+  on('session.end', async ($, e, next) => {
+    await stopSounds($)
+
+    return next(e)
+  })
+
+  // the recorded effects: a finished turn, and a click on the bare background
+  on('ui.pointer', ($, e, next) => {
+    playEffect($, 'click')
 
     return next(e)
   })
@@ -365,7 +278,13 @@ export const register: Register = on => {
     const asked = e.args.trim().toLowerCase()
 
     if (asked === '') {
-      return { text: `The workshop background is ${mode}. Set it with /workshop live, /workshop calm or /workshop auto.` }
+      return { text: `The workshop background is ${mode}, its sound ${isSoundOn() ? 'on' : 'off'}. Set it with /workshop live, calm or auto, and /workshop sound on or off.` }
+    }
+    if (asked === 'sound on' || asked === 'sound off') {
+      const isNowOn = asked === 'sound on'
+      await setSound($, isNowOn)
+
+      return { text: isNowOn ? 'Workshop sound on: the background track and the clockwork sounds play.' : 'Workshop sound off: the background track and the recorded sounds are silent.' }
     }
     if (!isMode(asked)) {
       return { text: `"${asked.slice(0, 24)}" is not a mode. Use /workshop live, /workshop calm or /workshop auto.` }
@@ -381,8 +300,21 @@ export const register: Register = on => {
 
     return next(e)
   })
+  // an approval card or a question waiting for you: the clockwork click
+  on('classic.PermissionRequest', ($, e, next) => {
+    playEffect($, 'ask')
+
+    return next(e)
+  })
+  on('tool.call', { tool: 'AskUserQuestion' }, ($, e, next) => {
+    playEffect($, 'ask')
+
+    return next(e)
+  })
+
   on('turn.complete', ($, e, next) => {
     restLater($)
+    playEffect($, 'done')
 
     return next(e)
   })
