@@ -19,12 +19,16 @@ const SCENE_ALT = 'Mecha claws probing a glowing cube under a broken clock dial,
 //   live  always animated
 //   calm  a still painting, no shader: nothing for the GPU to do
 //   auto  animated while Claude works and for two minutes after, still otherwise
-// `/workshop <mode>` or the right-click menu sets it; it is remembered across sessions.
+// `/workshop <mode>` sets it; it is remembered across sessions.
 type Mode = 'live' | 'calm' | 'auto'
 const MODES: readonly Mode[] = ['live', 'calm', 'auto']
 const isMode = (value: unknown): value is Mode => MODES.some(one => one === value)
 const MODE_KEY = 'background-mode'
 const REST_AFTER_MS = 120_000
+const SOUND_SAID = {
+  on: 'Workshop sound on: the background track and the clockwork sounds play.',
+  off: 'Workshop sound off: the background track and the clockwork sounds are silent.',
+} as const
 const SAID: Record<Mode, string> = {
   live: 'Workshop live: the background is always animated.',
   calm: 'Workshop calm: the background is a still painting, so the GPU rests. /workshop live brings the motion back.',
@@ -179,9 +183,10 @@ const STYLE: ThemeStyle = {
   },
 }
 
-// No synthesized theme sound: every sound is one of the recordings sounds.ts
-// plays (the background track, and the clockwork clip for done, approvals,
-// questions and background clicks).
+// No theme sound: every sound is a recording sounds.ts plays (the background
+// track, and the clockwork clip for done, approvals, questions and background
+// clicks). A theme sound is all the app's header speaker icon switches, so
+// that icon doesn't show; mute from the right-click menu or /workshop sound.
 
 const BASE: ThemeSetArgs = {
   colors: theme,
@@ -284,7 +289,7 @@ export const register: Register = on => {
       const isNowOn = asked === 'sound on'
       await setSound($, isNowOn)
 
-      return { text: isNowOn ? 'Workshop sound on: the background track and the clockwork sounds play.' : 'Workshop sound off: the background track and the recorded sounds are silent.' }
+      return { text: isNowOn ? SOUND_SAID.on : SOUND_SAID.off }
     }
     if (!isMode(asked)) {
       return { text: `"${asked.slice(0, 24)}" is not a mode. Use /workshop live, /workshop calm or /workshop auto.` }
@@ -306,6 +311,15 @@ export const register: Register = on => {
 
     return next(e)
   })
+  // A security plugin may answer PermissionRequest ahead of this one and skip
+  // it; the notification the engine raises for the same prompt still comes.
+  on('classic.Notification', ($, e, next) => {
+    if (e.notification_type === 'permission_prompt') {
+      playEffect($, 'ask')
+    }
+
+    return next(e)
+  })
   on('tool.call', { tool: 'AskUserQuestion' }, ($, e, next) => {
     playEffect($, 'ask')
 
@@ -319,30 +333,24 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // The same choice in the desktop app's right-click menu: the two modes
-  // the background is not in.
+  // The desktop app's right-click menu holds one control: Mute or Unmute the
+  // recorded sounds. Every other setting is a /workshop command.
   on('ui.render', { component: 'ContextMenu' }, ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
-    const pick = async (next: Mode) => {
-      await setMode($, next)
-      $.ui.toast(SAID[next])
+    const switchSound = async (next: boolean) => {
+      await setSound($, next)
+      $.ui.toast(next ? SOUND_SAID.on : SOUND_SAID.off)
     }
 
     return (
       <Box flexDirection="column">
-        {mode !== 'calm' && (
-          <Button key="calm" onPress={() => pick('calm')}>
-            Calm the workshop <Text dimColor>Still background, saves battery</Text>
+        {isSoundOn() ? (
+          <Button key="mute" onPress={() => switchSound(false)}>
+            Mute the workshop <Text dimColor>Background track and clockwork sounds off</Text>
           </Button>
-        )}
-        {mode !== 'live' && (
-          <Button key="live" onPress={() => pick('live')}>
-            Wake the workshop <Text dimColor>Always animated</Text>
-          </Button>
-        )}
-        {mode !== 'auto' && (
-          <Button key="auto" onPress={() => pick('auto')}>
-            Workshop on auto <Text dimColor>Animated only while Claude works</Text>
+        ) : (
+          <Button key="unmute" onPress={() => switchSound(true)}>
+            Unmute the workshop <Text dimColor>Background track and clockwork sounds on</Text>
           </Button>
         )}
       </Box>

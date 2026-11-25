@@ -1,8 +1,8 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
-// Every sound is a recording played by sounds.ts: the look carries no
-// synthesized theme sound, so none of the old clockwork cues plays over them.
-test('the look is accepted and carries no synthesized sound', async ($, on) => {
+// Every sound is a recording played by sounds.ts: the look carries no theme
+// sound, so nothing synthesized plays over them.
+test('the look is accepted and carries no theme sound', async ($, on) => {
   const logs: string[] = []
   const looks: unknown[] = []
   on('theme.set', (_, e) => {
@@ -21,4 +21,45 @@ test('the look is accepted and carries no synthesized sound', async ($, on) => {
   expect(logs.filter(l => /refused/.test(l))).toEqual([])
   expect(looks.length).toBe(1)
   expect(JSON.stringify(looks[0]).includes('"sound"')).toBe(false)
+})
+
+// On macOS the app plays the recordings itself, from the FLAC copies
+// (afplay reads FLAC, not Ogg): the background loops through $.audio.play.
+test('on macOS the background track loops through the app', async ($, on) => {
+  const plays: unknown[] = []
+  on('session.info', () => ({ value: { platform: 'macos', transcriptPath: '' } }))
+  on('audio.play', (_, e) => {
+    plays.push(e)
+    return { value: undefined }
+  })
+  on('theme.set', () => ({ value: { isDrawn: true, requestId: 'theme' } }))
+  on('command.register', () => ({ value: { command: 'workshop' } }))
+  mock.clock(on)
+  mock.store(on, { 'background-mode-version': 2 })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  // the loop starts in the background: let it reach the app
+  for (let tick = 0; tick < 50 && plays.length === 0; tick++) {
+    await Promise.resolve()
+  }
+  expect(JSON.stringify(plays)).toContain('sounds/ambience.flac')
+  expect(JSON.stringify(plays)).toContain('"shouldLoop":true')
+})
+
+// The right-click menu holds one control: Mute while sound is on, Unmute once
+// muted. The background modes are /workshop commands only.
+test('the menu holds only Mute or Unmute', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const ui = await $.ui.mount({ plugin: 'nox-workshop', surface: 'desktop', component: 'ContextMenu', props: {} })
+  expect(await ui.find({ key: 'mute' })).toBeDefined()
+  for (const mode of ['calm', 'live', 'auto']) {
+    expect(await ui.find({ key: mode })).toBeUndefined()
+  }
+  await ui.press({ key: 'mute' })
+  expect(await ui.find({ key: 'unmute' })).toBeDefined()
+  expect(await ui.find({ key: 'mute' })).toBeUndefined()
+  await ui.press({ key: 'unmute' })
+  expect(await ui.find({ key: 'mute' })).toBeDefined()
+  await ui.unmount()
 })
