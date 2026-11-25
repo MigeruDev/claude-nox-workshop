@@ -1,0 +1,7 @@
+{
+  "name": "nox-mods",
+  "owner": { "name": "local" },
+  "plugins": [
+    { "name": "nox-workshop", "source": "./nox-workshop", "description": "Krozmos Workshop: a time-magic workshop look for Claude, with an animated Eliacube backdrop" }
+  ]
+}
