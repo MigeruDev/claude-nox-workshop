@@ -27,7 +27,7 @@ const MODE_KEY = 'background-mode'
 const REST_AFTER_MS = 120_000
 const SOUND_SAID = {
   on: 'Workshop sound on: the background track and the clockwork sounds play.',
-  off: 'Workshop sound off: the background track and the clockwork sounds are silent.',
+  off: 'Workshop sound off: the background track and the clicks are silent. The done sound still plays when a task finishes.',
 } as const
 const SAID: Record<Mode, string> = {
   live: 'Workshop live: the background is always animated.',
@@ -346,7 +346,7 @@ export const register: Register = on => {
       <Box flexDirection="column">
         {isSoundOn() ? (
           <Button key="mute" onPress={() => switchSound(false)}>
-            Mute the workshop <Text dimColor>Background track and clockwork sounds off</Text>
+            Mute the workshop <Text dimColor>Background track and clicks off, done sound stays</Text>
           </Button>
         ) : (
           <Button key="unmute" onPress={() => switchSound(true)}>

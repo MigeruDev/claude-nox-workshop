@@ -45,6 +45,8 @@ With several session tabs open, only one tab plays the background track. If that
 - **Right-click** anywhere on the background and choose **Mute the workshop**, or **Unmute the workshop** once muted. It's the only entry the mod adds to that menu.
 - Or use `/workshop sound off` and `/workshop sound on`.
 
+Muting silences the background track and the clicks. The done sound still plays when Claude finishes a task, so you hear it either way.
+
 The choice applies to every tab and is remembered across sessions.
 
 The app's own speaker icon in the header doesn't appear with this theme. That icon only switches a theme's synthesized sound, and the app never tells a mod whether it's on, so it can't control recordings.
@@ -60,7 +62,7 @@ All settings other than mute are `/workshop` commands:
 | `/workshop calm` | Background shown as a still painting, so the GPU rests |
 | `/workshop auto` | Animated while Claude works and for two minutes after, still otherwise |
 | `/workshop sound on` | Plays the background track and the clockwork sounds |
-| `/workshop sound off` | Silences them |
+| `/workshop sound off` | Silences the background track and clicks; the done sound still plays |
 
 Each choice is remembered across sessions.
 

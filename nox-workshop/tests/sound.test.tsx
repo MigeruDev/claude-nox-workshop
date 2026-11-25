@@ -51,6 +51,13 @@ test('on macOS the background track loops through the app', async ($, on) => {
 test('the menu holds only Mute or Unmute', async ($, on) => {
   mock.clock(on)
   mock.store(on)
+  // on Linux, muting stops every background player, from any tab
+  const ran: string[] = []
+  on('session.info', () => ({ value: { platform: 'linux', transcriptPath: '' } }))
+  on('process.run', (_, e) => {
+    ran.push(e.argv.join(' '))
+    return { value: { exitCode: 0, stdout: e.argv[0] === 'which' ? '/usr/bin/pw-play\n' : '', stderr: '' } }
+  })
   const ui = await $.ui.mount({ plugin: 'nox-workshop', surface: 'desktop', component: 'ContextMenu', props: {} })
   expect(await ui.find({ key: 'mute' })).toBeDefined()
   for (const mode of ['calm', 'live', 'auto']) {
@@ -58,8 +65,33 @@ test('the menu holds only Mute or Unmute', async ($, on) => {
   }
   await ui.press({ key: 'mute' })
   expect(await ui.find({ key: 'unmute' })).toBeDefined()
+  expect(ran.some(line => line.startsWith('pkill -f nox-workshop/'))).toBe(true)
   expect(await ui.find({ key: 'mute' })).toBeUndefined()
   await ui.press({ key: 'unmute' })
   expect(await ui.find({ key: 'mute' })).toBeDefined()
   await ui.unmount()
+})
+
+// Muting silences the background and the clicks, never the done sound: a
+// finished turn is heard either way.
+test('muted, a finished turn still plays the done sound', async ($, on) => {
+  const plays: string[] = []
+  on('session.info', () => ({ value: { platform: 'macos', transcriptPath: '' } }))
+  on('audio.play', (_, e) => {
+    plays.push(JSON.stringify(e))
+    return { value: undefined }
+  })
+  on('theme.set', () => ({ value: { isDrawn: true, requestId: 'theme' } }))
+  on('command.register', () => ({ value: { command: 'workshop' } }))
+  mock.clock(on)
+  mock.store(on, { 'background-mode-version': 2, 'file-sound': false })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('turn.complete', () => ({ text: '' }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  for (let tick = 0; tick < 50 && !plays.some(p => p.includes('done.flac')); tick++) {
+    await Promise.resolve()
+  }
+  expect(plays.some(p => p.includes('sounds/done.flac'))).toBe(true)
+  expect(plays.some(p => p.includes('ambience'))).toBe(false)
 })

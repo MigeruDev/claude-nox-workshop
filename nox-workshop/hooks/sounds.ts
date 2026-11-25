@@ -14,8 +14,9 @@ import type { EngineInterface, Timer } from 'claude-code'
 //   done      when Claude finishes a turn
 //   click     a click on the bare background, and an approval or question
 //             waiting for you
-// `/workshop sound on|off` or the right-click menu switches them; the choice
-// is kept across sessions.
+// `/workshop sound on|off` or the right-click menu switches the background
+// and the clicks; the done sound plays either way. The choice is kept across
+// sessions.
 
 const SOUND_KEY = 'file-sound'
 const OWNER_KEY = 'ambience-owner'
@@ -44,6 +45,8 @@ let heartbeat: Timer | undefined
 // the background loop: whether it should run, and how to stop what plays now
 let isLooping = false
 let loopPid: string | undefined
+// the playing loop's output stream: ending it kills its player
+let loopRun: AsyncIterator<unknown> | undefined
 let loopAbort: AbortController | undefined
 // effects that are sounding now, so a burst of clicks doesn't pile up
 const sounding = new Set<Effect>()
@@ -90,8 +93,9 @@ function argv(bin: string, path: string, volume: number) {
 }
 
 // Plays one file to its end through a system player; resolves once it exits.
-async function playWithProcess($: EngineInterface, bin: string, name: string, volume: number, onPid?: (pid: string) => void) {
+async function playWithProcess($: EngineInterface, bin: string, name: string, volume: number, onPid?: (pid: string) => void, onRun?: (run: AsyncIterator<unknown>) => void) {
   const run = $.process.spawn({ argv: argv(bin, `${$.plugin.root}/sounds/${name}.ogg`, volume) })
+  onRun?.(run as unknown as AsyncIterator<unknown>)
   let errors = ''
   for await (const { stream, text } of run) {
     if (stream === 'stdout' && onPid !== undefined) {
@@ -126,7 +130,9 @@ async function playOnce($: EngineInterface, name: string, volume: number) {
 
 // One effect, unless the same one is still sounding.
 export function playEffect($: EngineInterface, effect: Effect) {
-  if (!isOn || sounding.has(effect)) {
+  // muting silences the background and the clicks; the done sound always
+  // plays, so a finished turn is heard either way
+  if ((!isOn && effect !== 'done') || sounding.has(effect)) {
     return
   }
   sounding.add(effect)
@@ -171,11 +177,14 @@ function startLoop($: EngineInterface) {
       try {
         await playWithProcess($, how.bin, 'ambience', VOLUME.ambience, pid => {
           loopPid = pid
+        }, run => {
+          loopRun = run
         })
       } catch (error) {
         $.ui.log(`nox-workshop: background sound failed: ${String(error)}`)
       }
       loopPid = undefined
+      loopRun = undefined
       // a player that quits at once is broken, not finished: stop retrying soon
       failures = (await $.clock.now()) - startedAt < 2_000 ? failures + 1 : 0
     }
@@ -183,10 +192,25 @@ function startLoop($: EngineInterface) {
   })()
 }
 
+// Muting stops every background player this mod started, from any tab or
+// any copy of the mod (an older tab, a reload that lost track of its player),
+// not only the one this copy holds.
+async function silenceAll($: EngineInterface) {
+  if ((await findPlayer($))?.kind !== 'process') {
+    return
+  }
+  await $.process.run(['pkill', '-f', 'nox-workshop/.*sounds/ambience\\.ogg'], { timeoutMs: 5_000 }).catch(() => undefined)
+}
+
 async function stopLoop($: EngineInterface) {
   isLooping = false
   loopAbort?.abort()
   loopAbort = undefined
+  // ending the stream is how the engine kills a spawned child; the pid is a
+  // second way, should the stream wait on output the player never writes
+  const run = loopRun
+  loopRun = undefined
+  void run?.return?.().catch(() => undefined)
   const pid = loopPid
   loopPid = undefined
   if (pid !== undefined) {
@@ -202,6 +226,10 @@ async function claim($: EngineInterface) {
   if (isOn !== wasOn) {
     // the right-click menu shows Mute or Unmute from this: draw it again
     $.ui.invalidate('ui.render')
+  }
+  if (wasOn && !isOn) {
+    await stopLoop($)
+    await silenceAll($)
   }
   const now = await $.clock.now()
   const owner = await $.store.get(OWNER_KEY)
@@ -244,4 +272,7 @@ export function isSoundOn() {
 export async function setSound($: EngineInterface, next: boolean) {
   await $.store.set(SOUND_KEY, next)
   await claim($)
+  if (!next) {
+    await silenceAll($)
+  }
 }
